@@ -71,6 +71,7 @@ def build_agent():
         model=model_name,
         temperature=0.7,
         google_api_key=api_key,
+        max_retries=3,
     )
 
     # Main agent gets research tool plus built-in Deep Agents tools

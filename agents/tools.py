@@ -9,6 +9,7 @@ to prevent subagent text from leaking to the frontend via LangChain callback pro
 """
 
 import os
+import time
 from dotenv import load_dotenv
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor
@@ -99,7 +100,7 @@ def research(query: str) -> dict:
     print(f"[TOOL] research: query='{query}' (using thread isolation)")
 
     from deepagents import create_deep_agent
-    from langchain_google_genai import GoogleGenerativeAI
+    from langchain_google_genai import ChatGoogleGenerativeAI
 
     def _run_research_isolated():
         """
@@ -124,11 +125,12 @@ def research(query: str) -> dict:
             search_results.extend(results)
             return results
 
-        model_name = os.environ.get("GEMINI_MODEL", "google_genai:gemini-3-flash-preview")
-        llm = GoogleGenerativeAI(
+        model_name = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+        llm = ChatGoogleGenerativeAI(
             model=model_name,
             temperature=0.7,
-            api_key=os.environ.get("GOOGLE_API_KEY"),
+            google_api_key=os.environ.get("GEMINI_API_KEY"),
+            max_retries=3,
         )
 
         # System prompt for the internal researcher
@@ -170,10 +172,23 @@ Rules:
         return {"summary": summary, "sources": sources}
 
     # Run in thread pool to isolate from parent async context
-    # This blocks the tool execution until research completes, which is acceptable
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_run_research_isolated)
-        result = future.result()  # Blocks until complete
+    # Retry with exponential backoff for transient API errors (e.g. Gemini 500s)
+    max_retries = 3
+    for attempt in range(max_retries):
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_run_research_isolated)
+            try:
+                result = future.result(timeout=120)
+                break
+            except Exception as e:
+                error_msg = str(e)
+                is_retryable = "500" in error_msg or "INTERNAL" in error_msg or "timeout" in error_msg.lower()
+                if is_retryable and attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    print(f"[TOOL] research: Gemini error (attempt {attempt+1}/{max_retries}), retrying in {wait}s: {error_msg[:100]}")
+                    time.sleep(wait)
+                    continue
+                raise
 
     print(f"[TOOL] research: completed with {len(result['sources'])} sources")
     return result

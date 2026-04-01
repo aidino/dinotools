@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm view:*)",
+      "Bash(python3 -c \"import json,sys; v=json.load\\(sys.stdin\\); print\\('\\\\n'.join\\(v[-10:]\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(k,v\\) for k,v in d.items\\(\\) if 'copilotkitnext' in k or 'copilotkit' in k]\")",
+      "Bash(npx next:*)",
+      "Bash(npm install:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm search:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "WebSearch",
+      "Bash(node:*)",
+      "Bash(pip show:*)",
+      "Bash(/Users/ngohongthai/Documents/dinotools/.venv/bin/pip show:*)",
+      "Bash(/Users/ngohongthai/Documents/dinotools/.venv/bin/python:*)"
+    ]
+  }
+}
