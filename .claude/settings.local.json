@@ -14,7 +14,8 @@
       "Bash(node:*)",
       "Bash(pip show:*)",
       "Bash(/Users/ngohongthai/Documents/dinotools/.venv/bin/pip show:*)",
-      "Bash(/Users/ngohongthai/Documents/dinotools/.venv/bin/python:*)"
+      "Bash(/Users/ngohongthai/Documents/dinotools/.venv/bin/python:*)",
+      "Bash(git:*)"
     ]
   }
 }
