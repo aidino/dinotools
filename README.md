@@ -1,0 +1,2 @@
+# dinotools
+Making life easier
