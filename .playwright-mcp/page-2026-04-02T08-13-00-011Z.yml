@@ -1,0 +1,24 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - button "Search" [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e8]: Search
+      - button "New thread" [ref=e10]:
+        - img [ref=e11]
+        - generic [ref=e12]: New thread
+      - generic [ref=e13]:
+        - generic [ref=e14]: History
+        - generic [ref=e16]:
+          - button "Deep dive into RAG architectures" [ref=e17]
+          - button "Comparison of LLM frameworks 2026" [ref=e18]
+          - button "React Server Components best practices" [ref=e19]
+          - button "Building AI agents with LangGraph" [ref=e20]
+      - generic [ref=e23]: Dino
+    - main [ref=e25]:
+      - generic [ref=e27]:
+        - img [ref=e29]
+        - heading "What do you want to research?" [level=1] [ref=e32]
+        - paragraph [ref=e33]: Ask any question and I'll do deep research using web search to find the most relevant and up-to-date information.
+  - button "Open Next.js Dev Tools" [ref=e39] [cursor=pointer]:
+    - img [ref=e40]

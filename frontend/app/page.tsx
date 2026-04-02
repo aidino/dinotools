@@ -139,6 +139,10 @@ function ResearchPage() {
   const [activeTab, setActiveTab] = useState<TabId>("answer");
   const [query, setQuery] = useState("");
 
+  // Local state for steps from tool calls (fallback when agent.state doesn't work)
+  const [localSteps, setLocalSteps] = useState<Step[]>([]);
+  const [localActiveIndex, setLocalActiveIndex] = useState<number>(-1);
+
   // useAgent with OnStateChanged for real-time progress updates
   const { agent } = useAgent({
     agentId: "research_assistant",
@@ -146,8 +150,20 @@ function ResearchPage() {
   });
 
   const agentState = agent.state as AgentState | undefined;
-  const steps = agentState?.steps || [];
-  const activeStepIndex = agentState?.active_step_index ?? -1;
+
+  // Handle both formats: string[] (from emit_intermediate_state) and Step[] (from emit_state)
+  const rawSteps = agentState?.steps || [];
+  const stepsFromAgent: Step[] = rawSteps.map((s: string | Step) => {
+    if (typeof s === 'string') {
+      return { description: s, status: 'pending' as const };
+    }
+    return s as Step;
+  });
+  const activeStepIndexFromAgent = agentState?.active_step_index ?? -1;
+
+  // Use local state as fallback
+  const steps = stepsFromAgent.length > 0 ? stepsFromAgent : localSteps;
+  const activeStepIndex = stepsFromAgent.length > 0 ? activeStepIndexFromAgent : localActiveIndex;
 
   const { copilotkit } = useCopilotKit();
   const renderToolCall = useRenderToolCall();
@@ -174,6 +190,39 @@ function ResearchPage() {
       render: ({ name, status, parameters, result }) => {
         const args = (parameters ?? {}) as Record<string, unknown>;
         const isActive = status === "inProgress" || status === "executing";
+
+        // Handle set_steps for step tracking
+        if (name === "set_steps" && args?.steps) {
+          console.log("[DEBUG] set_steps called with:", args.steps);
+          const stepDescriptions = args.steps as string[];
+          const newSteps = stepDescriptions.map((desc) => ({
+            description: desc,
+            status: "pending" as const,
+          }));
+          console.log("[DEBUG] Setting localSteps to:", newSteps);
+          queueMicrotask(() => {
+            setLocalSteps(newSteps);
+            setLocalActiveIndex(-1);
+          });
+        }
+
+        // Handle update_step for step tracking
+        if (name === "update_step") {
+          console.log("[DEBUG] update_step called with:", args);
+          const stepIndex = args?.step_index as number;
+          const stepStatus = args?.status as string;
+          if (typeof stepIndex === "number") {
+            queueMicrotask(() => {
+              setLocalSteps((prev) =>
+                prev.map((s, i) => ({
+                  ...s,
+                  status: i < stepIndex ? "completed" : i === stepIndex && stepStatus === "done" ? "completed" : s.status,
+                }))
+              );
+              setLocalActiveIndex(stepStatus === "running" ? stepIndex : -1);
+            });
+          }
+        }
 
         // Handle write_todos for research state (not step tracking)
         if (name === "write_todos" && args?.todos) {

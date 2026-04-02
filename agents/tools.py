@@ -93,6 +93,35 @@ def internet_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
 
 
 @tool
+async def set_steps(steps: list[str], config: RunnableConfig) -> str:
+    """Initialize the research steps for progress tracking. Call this immediately after write_todos.
+
+    Args:
+        steps: List of step descriptions from the todo list.
+    """
+    print(f"[TOOL] set_steps called with {len(steps)} steps: {steps}")
+    thread_id = _get_thread_id(config)
+    steps_data = [{"description": s, "status": "pending"} for s in steps]
+
+    _step_progress[thread_id] = {
+        "steps": steps_data,
+        "active_step_index": -1,
+    }
+
+    # Emit state to frontend so TaskProgress appears immediately
+    try:
+        await copilotkit_emit_state(config, {
+            "steps": steps_data,
+            "active_step_index": -1,
+        })
+        print(f"[TOOL] set_steps emitted state for thread {thread_id}")
+    except Exception as e:
+        print(f"[TOOL] set_steps failed to emit state: {e}")
+
+    return f"Initialized {len(steps)} steps for tracking"
+
+
+@tool
 async def update_step(step_index: int, status: str, config: RunnableConfig) -> str:
     """Update the status of the current research step and emit to frontend.
 
@@ -128,9 +157,11 @@ async def update_step(step_index: int, status: str, config: RunnableConfig) -> s
 
 
 @tool
-def research(query: str) -> dict:
+def research(query: str, config: RunnableConfig) -> dict:
     """
     Research a topic using web search. Returns structured data with sources.
+    Automatically updates step progress - marks the first pending step as running,
+    then completed after research finishes.
 
     This tool creates an internal Deep Agent that runs in a SEPARATE THREAD to prevent
     LangChain callback propagation. The thread has isolated execution context, so the
@@ -145,6 +176,34 @@ def research(query: str) -> dict:
             "sources": list[dict] - [{url, title, content, status}, ...]
         }
     """
+    import asyncio
+    thread_id = _get_thread_id(config)
+
+    # Auto-update: find first pending step and mark as running
+    progress = _step_progress.get(thread_id, {"steps": [], "active_step_index": -1})
+    steps = progress.get("steps", [])
+    active_index = -1
+
+    for i, step in enumerate(steps):
+        if step.get("status") == "pending":
+            active_index = i
+            step["status"] = "pending"  # Still pending, but marked as active
+            progress["active_step_index"] = i
+            _step_progress[thread_id] = progress
+
+            # Emit state to frontend
+            try:
+                asyncio.get_event_loop().create_task(
+                    copilotkit_emit_state(config, {
+                        "steps": steps,
+                        "active_step_index": i,
+                    })
+                )
+                print(f"[TOOL] research: auto-marked step {i} as running")
+            except Exception as e:
+                print(f"[TOOL] research: failed to emit running state: {e}")
+            break
+
     print(f"[TOOL] research: query='{query}' (using thread isolation)")
 
     from deepagents import create_deep_agent
@@ -239,4 +298,22 @@ Rules:
                 raise
 
     print(f"[TOOL] research: completed with {len(result['sources'])} sources")
+
+    # Auto-update: mark the active step as completed
+    if active_index >= 0 and active_index < len(steps):
+        try:
+            steps[active_index]["status"] = "completed"
+            progress["active_step_index"] = -1
+            _step_progress[thread_id] = progress
+
+            asyncio.get_event_loop().create_task(
+                copilotkit_emit_state(config, {
+                    "steps": steps,
+                    "active_step_index": -1,
+                })
+            )
+            print(f"[TOOL] research: auto-marked step {active_index} as completed")
+        except Exception as e:
+            print(f"[TOOL] research: failed to emit completed state: {e}")
+
     return result

@@ -8,13 +8,12 @@ planning, filesystem, and subagent capabilities using Tavily for web research.
 import os
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.callbacks.manager import adispatch_custom_event
-from copilotkit.langgraph import copilotkit_configure
 from deepagents import create_deep_agent
 from langgraph.checkpoint.memory import MemorySaver
 from copilotkit import CopilotKitMiddleware
+from copilotkit.langgraph import copilotkit_customize_config
 
-from tools import research, update_step
+from tools import research, update_step, set_steps
 
 load_dotenv()
 
@@ -41,19 +40,20 @@ Important guidelines:
 - Update todos as you complete each step
 
 Step tracking (ALWAYS follow):
-- Before researching a step, call update_step(step_index, "running") using the zero-based index from your todo list
+- IMMEDIATELY after write_todos, call set_steps with the todo list contents
+- Before researching a step, call update_step(step_index, "running") using the zero-based index
 - After completing the research for a step, call update_step(step_index, "done")
-- Match step_index to the position in your todo list (0 for first todo, 1 for second, etc.)
 
 Example workflow:
 1. write_todos(["Research topic A", "Research topic B", "Synthesize findings"])
-2. update_step(0, "running")
-3. research("Find information about topic A") -> receives prose summary
-4. update_step(0, "done")
-5. update_step(1, "running")
-6. research("Find information about topic B") -> receives prose summary
-7. update_step(1, "done")
-8. write_file("/reports/final_report.md", "# Research Report\n\n...")
+2. set_steps(["Research topic A", "Research topic B", "Synthesize findings"])
+3. update_step(0, "running")
+4. research("Find information about topic A") -> receives prose summary
+5. update_step(0, "done")
+6. update_step(1, "running")
+7. research("Find information about topic B") -> receives prose summary
+8. update_step(1, "done")
+9. write_file("/reports/final_report.md", "# Research Report\n\n...")
 
 Always maintain a professional, comprehensive research style."""
 
@@ -89,7 +89,7 @@ def build_agent():
     # (write_todos, read_file, write_file)
     # The research tool wraps an internal Deep Agent that runs via .invoke()
     # so its text doesn't stream to the frontend
-    main_tools = [research, update_step]
+    main_tools = [research, update_step, set_steps]
 
     # Create the Deep Agent with CopilotKit middleware
     agent_graph = create_deep_agent(
@@ -100,15 +100,16 @@ def build_agent():
         checkpointer=MemorySaver(),
     )
 
-    # Configure state streaming for real-time progress updates
+    # Configure state streaming via emit_intermediate_state
+    # This maps tool arguments to state keys for real-time frontend updates
     config = {
         "recursion_limit": 100,
         "metadata": {
-            "predict_state": [
+            "emit_intermediate_state": [
                 {
                     "state_key": "steps",
-                    "tool": "write_todos",
-                    "tool_argument": "todos",
+                    "tool": "set_steps",
+                    "tool_argument": "steps",
                 },
                 {
                     "state_key": "active_step_index",
@@ -121,6 +122,6 @@ def build_agent():
 
     print(f"[AGENT] Deep Research Agent created with model={model_name}")
     print(f"[AGENT] Main tools: {[t.name for t in main_tools]}")
-    print(f"[AGENT] State streaming enabled for real-time progress")
+    print(f"[AGENT] State streaming enabled via emit_intermediate_state")
 
     return agent_graph.with_config(config)

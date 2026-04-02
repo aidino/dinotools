@@ -45,7 +45,31 @@
       "Bash(uv run:*)",
       "Bash(grep -oP '.{0,200}setState.{0,200}' /home/dino/Documents/dinotools/frontend/node_modules/@ag-ui/client/dist/index.mjs)",
       "Bash(grep:*)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(pkill -f \"python.*main.py\")",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"python agents/main.py\")",
+      "Bash(echo \"Backend started with PID: $!\")",
+      "Bash(fuser -k 8123/tcp)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_type",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_wait_for",
+      "mcp__plugin_everything-claude-code_playwright__browser_snapshot",
+      "Bash(xargs -I {} kill {})",
+      "Bash(tee /tmp/backend_live.log)",
+      "Bash(tee /tmp/backend_final.log)",
+      "Bash(xargs -I {} kill -9 {})",
+      "Bash(xargs kill:*)",
+      "Bash(lsof -ti:8123)",
+      "Bash(lsof -ti:3000)",
+      "Bash(kill 1470094)",
+      "Bash(lsof -i:8123)",
+      "Bash(echo \"Backend PID: $!\" sleep 3 cat /tmp/backend.log)",
+      "Bash(pkill -f \"python main.py\")",
+      "Bash(echo \"Backend PID: $!\")",
+      "Bash(pkill -f \"uv run python main.py\")",
+      "Bash(echo \"Started backend with PID: $!\")"
     ]
   }
 }
