@@ -16,7 +16,8 @@ export function Sidebar() {
   const { startNewThread } = useThread();
 
   useEffect(() => {
-    setMounted(true);
+    const timeout = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(timeout);
   }, []);
 
   return (

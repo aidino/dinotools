@@ -104,13 +104,16 @@ function ResearchPage() {
         if (name === "update_step") {
           const stepIndex = args?.step_index as number | undefined;
           if (stepIndex !== undefined) {
-            setLocalSteps((prev) =>
-              prev.map((s, i) =>
-                i === stepIndex
-                  ? { ...s, status: isActive ? "running" : ("done" as const) }
-                  : s,
-              ),
-            );
+            // Defer state update to avoid "setState during render" warning
+            queueMicrotask(() => {
+              setLocalSteps((prev) =>
+                prev.map((s, i) =>
+                  i === stepIndex
+                    ? { ...s, status: isActive ? "running" : ("done" as const) }
+                    : s,
+                ),
+              );
+            });
           }
           return <></>;
         }
@@ -129,28 +132,31 @@ function ResearchPage() {
             id: todo.id || `todo-${Date.now()}-${index}`,
           }));
 
-          // Only update if we haven't already set these todos (prevent duplicate updates)
-          setResearchState((prev) => {
-            const hasTheseTodos = prev.todos.length === todosWithIds.length &&
-              todosWithIds.every((t, i) => prev.todos[i]?.content === t.content);
-            if (hasTheseTodos) return prev;
-            return {
-              ...prev,
-              todos: todosWithIds as Todo[],
-            };
-          });
+          // Defer state updates to avoid "setState during render" warning
+          queueMicrotask(() => {
+            // Only update if we haven't already set these todos (prevent duplicate updates)
+            setResearchState((prev) => {
+              const hasTheseTodos = prev.todos.length === todosWithIds.length &&
+                todosWithIds.every((t, i) => prev.todos[i]?.content === t.content);
+              if (hasTheseTodos) return prev;
+              return {
+                ...prev,
+                todos: todosWithIds as Todo[],
+              };
+            });
 
-          setLocalSteps((prev) => {
-            if (prev.length > 0) return prev; // Already populated
-            return todosWithIds.map((todo, index) => ({
-              id: index,
-              content: todo.content,
-              status: "pending" as const,
-            }));
+            setLocalSteps((prev) => {
+              if (prev.length > 0) return prev; // Already populated
+              return todosWithIds.map((todo, index) => ({
+                id: index,
+                content: todo.content,
+                status: "pending" as const,
+              }));
+            });
           });
         }
 
-        // Update research state when tools complete (synchronous for real-time updates)
+        // Update research state when tools complete (deferred to avoid setState during render)
         if (status === "complete") {
           if (name === "research" && result) {
             const unwrapped = normalizeResult(result);
@@ -164,25 +170,29 @@ function ResearchPage() {
               }>;
             };
             if (researchResult.sources && researchResult.sources.length > 0) {
-              setResearchState((prev) => ({
-                ...prev,
-                sources: [...prev.sources, ...researchResult.sources],
-              }));
+              queueMicrotask(() => {
+                setResearchState((prev) => ({
+                  ...prev,
+                  sources: [...prev.sources, ...researchResult.sources],
+                }));
+              });
             }
           }
 
           if (name === "write_file" && args?.file_path) {
-            setResearchState((prev) => ({
-              ...prev,
-              files: [
-                ...prev.files,
-                {
-                  path: args.file_path as string,
-                  content: args.content as string,
-                  createdAt: new Date().toISOString(),
-                },
-              ],
-            }));
+            queueMicrotask(() => {
+              setResearchState((prev) => ({
+                ...prev,
+                files: [
+                  ...prev.files,
+                  {
+                    path: args.file_path as string,
+                    content: args.content as string,
+                    createdAt: new Date().toISOString(),
+                  },
+                ],
+              }));
+            });
           }
         }
 

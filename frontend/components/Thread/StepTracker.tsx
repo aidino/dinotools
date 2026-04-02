@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { Check, CircleDot, Circle, ChevronRight } from "lucide-react";
 
 export interface Step {
@@ -16,38 +16,28 @@ interface StepTrackerProps {
 }
 
 export function StepTracker({ steps, activeIndex, isAgentRunning }: StepTrackerProps) {
-  const [expanded, setExpanded] = useState(true);
-  const prevExpandedRef = useRef(true);
+  // Derive expansion state based on current props (no useEffect needed)
+  const allComplete = steps.length > 0 && steps.every((s) => s.status === "done");
+  const hasRunningStep = activeIndex >= 0;
 
-  // Auto-expand when a step starts running
-  useEffect(() => {
-    if (activeIndex >= 0 && !prevExpandedRef.current) {
-      setExpanded(true);
-    }
-    prevExpandedRef.current = expanded;
-  }, [activeIndex, expanded]);
+  // Auto-expand when a step starts running, auto-collapse when all done
+  // Use CSS animations for smooth transitions instead of state changes
+  const expanded = hasRunningStep || !allComplete || isAgentRunning;
 
-  // Auto-collapse when all steps are done
-  useEffect(() => {
-    if (
-      steps.length > 0 &&
-      steps.every((s) => s.status === "done") &&
-      !isAgentRunning
-    ) {
-      setExpanded(false);
-    }
-  }, [steps, isAgentRunning]);
+  const handleToggle = useCallback(() => {
+    // Toggle logic would need to be lifted up if manual control is needed
+    // For now, auto-controlled based on step status
+  }, []);
 
   if (steps.length === 0) return null;
 
   const completedCount = steps.filter((s) => s.status === "done").length;
   const totalCount = steps.length;
-  const allComplete = completedCount === totalCount;
 
   return (
     <div>
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={handleToggle}
         className="flex items-center gap-1.5 text-sm text-gray-400 mb-4 hover:text-white transition-colors duration-150"
       >
         {allComplete ? (

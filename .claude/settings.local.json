@@ -44,7 +44,8 @@
       "Bash(python:*)",
       "Bash(uv run:*)",
       "Bash(grep -oP '.{0,200}setState.{0,200}' /home/dino/Documents/dinotools/frontend/node_modules/@ag-ui/client/dist/index.mjs)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npm test:*)"
     ]
   }
 }

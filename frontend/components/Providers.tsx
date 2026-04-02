@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { useSyncExternalStore, useState, useCallback, type ReactNode } from "react";
 import { CopilotKit } from "@copilotkit/react-core/v2";
 import { ThreadProvider } from "./ThreadContext";
 
-export function Providers({ children }: { children: ReactNode }) {
-  const [mounted, setMounted] = useState(false);
-  const [threadId, setThreadId] = useState<string | undefined>(undefined);
+const subscribe = () => () => {}; // no-op subscription
+const getSnapshot = () => true; // always true on client
+const getServerSnapshot = () => false; // always false on server
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+export function Providers({ children }: { children: ReactNode }) {
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [threadId, setThreadId] = useState<string | undefined>(undefined);
 
   const handleNewThread = useCallback(() => {
     // Setting a new UUID forces CopilotKit to start a fresh conversation
