@@ -32,6 +32,16 @@ export interface ResearchState {
   sources: Source[];
 }
 
+export interface Step {
+  description: string;
+  status: "pending" | "completed";
+}
+
+export interface AgentState {
+  steps: Step[];
+  active_step_index: number;  // -1 means no active step
+}
+
 export const INITIAL_STATE: ResearchState = {
   todos: [],
   files: [],
