@@ -12,7 +12,7 @@ from deepagents import create_deep_agent
 from langgraph.checkpoint.memory import MemorySaver
 from copilotkit import CopilotKitMiddleware
 
-from tools import research
+from tools import research, update_step
 
 load_dotenv()
 
@@ -38,11 +38,20 @@ Important guidelines:
 - You write all files - compile findings into a comprehensive report
 - Update todos as you complete each step
 
+Step tracking (ALWAYS follow):
+- Before researching a step, call update_step(step_index, "running") using the zero-based index from your todo list
+- After completing the research for a step, call update_step(step_index, "done")
+- Match step_index to the position in your todo list (0 for first todo, 1 for second, etc.)
+
 Example workflow:
 1. write_todos(["Research topic A", "Research topic B", "Synthesize findings"])
-2. research("Find information about topic A") -> receives prose summary
-3. research("Find information about topic B") -> receives prose summary
-4. write_file("/reports/final_report.md", "# Research Report\n\n...")
+2. update_step(0, "running")
+3. research("Find information about topic A") -> receives prose summary
+4. update_step(0, "done")
+5. update_step(1, "running")
+6. research("Find information about topic B") -> receives prose summary
+7. update_step(1, "done")
+8. write_file("/reports/final_report.md", "# Research Report\n\n...")
 
 Always maintain a professional, comprehensive research style."""
 
@@ -78,7 +87,7 @@ def build_agent():
     # (write_todos, read_file, write_file)
     # The research tool wraps an internal Deep Agent that runs via .invoke()
     # so its text doesn't stream to the frontend
-    main_tools = [research]
+    main_tools = [research, update_step]
 
     # Create the Deep Agent with CopilotKit middleware
     agent_graph = create_deep_agent(

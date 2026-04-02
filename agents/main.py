@@ -54,6 +54,7 @@ try:
             "write_file",
             "read_file",
             "edit_file",
+            "update_step",
         ]
     )
 

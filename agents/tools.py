@@ -15,9 +15,21 @@ from typing import Any
 from concurrent.futures import ThreadPoolExecutor
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 from tavily import TavilyClient
 
 load_dotenv()
+
+# Module-level step progress tracker: thread_id -> { "steps": [...], "active_step_index": int }
+_step_progress: dict[str, dict[str, Any]] = {}
+
+
+def _get_thread_id(config: RunnableConfig) -> str:
+    return config.get("configurable", {}).get("thread_id", "default")
+
+
+def get_step_progress(thread_id: str) -> dict[str, Any]:
+    return _step_progress.get(thread_id, {"steps": [], "active_step_index": -1})
 
 
 def _do_internet_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
@@ -77,6 +89,39 @@ def internet_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
         List of dicts with url, title, and content for each result
     """
     return _do_internet_search(query, max_results)
+
+
+@tool
+async def update_step(step_index: int, status: str, config: RunnableConfig) -> str:
+    """Update the status of the current research step. Call before starting and after completing each research step.
+
+    Args:
+        step_index: The zero-based index of the step in the research plan.
+        status: The new status - "running" or "done".
+    """
+    # Frontend tracks step status via useDefaultRenderTool lifecycle events.
+    # This tool exists so the agent has an explicit mechanism to signal progress.
+    # We also attempt to emit state via CopilotKit for any AG-UI consumers.
+    try:
+        from copilotkit.langgraph import copilotkit_emit_state
+
+        thread_id = _get_thread_id(config)
+        progress = _step_progress.get(thread_id, {"steps": [], "active_step_index": -1})
+        steps = progress["steps"]
+
+        if 0 <= step_index < len(steps):
+            steps[step_index]["status"] = status
+            progress["active_step_index"] = step_index if status == "running" else -1
+            _step_progress[thread_id] = progress
+
+            await copilotkit_emit_state(config, {
+                "steps": steps,
+                "active_step_index": progress["active_step_index"],
+            })
+    except Exception:
+        pass  # Non-critical — frontend tracks status via tool lifecycle
+
+    return f"Step {step_index} marked as {status}"
 
 
 @tool
