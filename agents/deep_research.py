@@ -8,6 +8,8 @@ planning, filesystem, and subagent capabilities using Tavily for web research.
 import os
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.callbacks.manager import adispatch_custom_event
+from copilotkit.langgraph import copilotkit_configure
 from deepagents import create_deep_agent
 from langgraph.checkpoint.memory import MemorySaver
 from copilotkit import CopilotKitMiddleware
@@ -98,8 +100,27 @@ def build_agent():
         checkpointer=MemorySaver(),
     )
 
+    # Configure state streaming for real-time progress updates
+    config = {
+        "recursion_limit": 100,
+        "metadata": {
+            "predict_state": [
+                {
+                    "state_key": "steps",
+                    "tool": "write_todos",
+                    "tool_argument": "todos",
+                },
+                {
+                    "state_key": "active_step_index",
+                    "tool": "update_step",
+                    "tool_argument": "step_index",
+                }
+            ]
+        }
+    }
+
     print(f"[AGENT] Deep Research Agent created with model={model_name}")
     print(f"[AGENT] Main tools: {[t.name for t in main_tools]}")
+    print(f"[AGENT] State streaming enabled for real-time progress")
 
-    # Configure recursion limit for complex research tasks
-    return agent_graph.with_config({"recursion_limit": 100})
+    return agent_graph.with_config(config)
