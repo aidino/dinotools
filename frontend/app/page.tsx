@@ -1,27 +1,121 @@
 "use client";
 
 import { useSyncExternalStore, useState, useEffect, useCallback, useRef } from "react";
-import { useAgent, useCopilotKit, useDefaultRenderTool, useRenderToolCall } from "@copilotkit/react-core/v2";
+import { useAgent, UseAgentUpdate, useCopilotKit, useDefaultRenderTool, useRenderToolCall } from "@copilotkit/react-core/v2";
 import {
   ResearchState,
   INITIAL_STATE,
   Todo,
   ResearchFile,
+  Step,
+  AgentState,
 } from "@/types/research";
 import { ToolCard } from "@/components/ToolCard";
 import { FileViewerModal } from "@/components/FileViewerModal";
 import { SourceBanner } from "@/components/Thread/SourceBanner";
 import { TabBar, type TabId } from "@/components/Thread/TabBar";
-import { StepTracker, type Step } from "@/components/Thread/StepTracker";
 import { AnswerBody } from "@/components/Thread/AnswerBody";
 import { FollowUpInput } from "@/components/Thread/FollowUpInput";
 import { LinksTab } from "@/components/Thread/LinksTab";
 import { useThread } from "@/components/ThreadContext";
-import { Search } from "lucide-react";
+import { Search, Check, Loader2, Circle } from "lucide-react";
 
-const subscribe = () => () => {}; // no-op subscription
-const getSnapshot = () => true; // always true on client
-const getServerSnapshot = () => false; // always false on server
+// TaskProgress component - displays research progress with real-time updates
+function TaskProgress({ steps, activeIndex }: { steps: Step[]; activeIndex: number }) {
+  const completedCount = steps.filter((s) => s.status === "completed").length;
+  const progressPercentage = steps.length > 0 ? (completedCount / steps.length) * 100 : 0;
+
+  return (
+    <div className="flex justify-center w-full px-4 my-4">
+      <div className="relative rounded-xl w-full max-w-[700px] p-5 bg-[#232323] border border-white/10 shadow-lg">
+        {/* Header */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-semibold text-white">
+              Research Progress
+            </h3>
+            <div className="text-sm text-gray-400">
+              {completedCount}/{steps.length} Complete
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="relative h-2 rounded-full overflow-hidden bg-gray-700">
+            <div
+              className="absolute top-0 left-0 h-full bg-blue-500 rounded-full transition-all duration-1000 ease-out"
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Steps */}
+        <div className="space-y-2">
+          {steps.map((step, index) => {
+            const isCompleted = step.status === "completed";
+            const isRunning = index === activeIndex;
+            const isPending = !isCompleted && !isRunning;
+
+            return (
+              <div
+                key={index}
+                className={`relative flex items-center p-2.5 rounded-lg transition-all duration-500 ${
+                  isCompleted
+                    ? "bg-green-500/10 border border-green-500/20"
+                    : isRunning
+                      ? "bg-blue-500/10 border border-blue-500/30"
+                      : "bg-gray-800/50 border border-white/5"
+                }`}
+              >
+                {/* Status Icon */}
+                <div
+                  className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-3 ${
+                    isCompleted
+                      ? "bg-green-500 text-white"
+                      : isRunning
+                        ? "bg-blue-500 text-white animate-pulse"
+                        : "bg-gray-600 text-gray-400"
+                  }`}
+                >
+                  {isCompleted ? (
+                    <Check size={14} strokeWidth={3} />
+                  ) : isRunning ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Circle size={14} />
+                  )}
+                </div>
+
+                {/* Step Content */}
+                <div className="flex-1 min-w-0">
+                  <div
+                    className={`font-medium transition-all duration-300 text-sm ${
+                      isCompleted
+                        ? "text-green-400 line-through"
+                        : isRunning
+                          ? "text-white"
+                          : "text-gray-400"
+                    }`}
+                  >
+                    {step.description}
+                  </div>
+                  {isRunning && (
+                    <div className="text-xs mt-0.5 text-blue-400 animate-pulse">
+                      Processing...
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 function normalizeResult(result: unknown): unknown {
   if (
@@ -40,86 +134,49 @@ function normalizeResult(result: unknown): unknown {
   return result;
 }
 
-export default function Page() {
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-
-  if (!mounted) {
-    return (
-      <div className="h-full flex items-center justify-center bg-[#1a1a1a]">
-        <div className="flex flex-col items-center">
-          <div className="w-12 h-12 rounded-2xl bg-blue-600/10 flex items-center justify-center mb-4">
-            <Search size={24} className="text-blue-400" />
-          </div>
-          <h1 className="text-2xl font-semibold text-white mb-2">
-            What do you want to research?
-          </h1>
-          <p className="text-gray-500 text-sm text-center max-w-md">
-            Ask any question and I&apos;ll do deep research using web search
-            to find the most relevant and up-to-date information.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return <ResearchPage />;
-}
-
 function ResearchPage() {
   const [researchState, setResearchState] = useState<ResearchState>(INITIAL_STATE);
   const [selectedFile, setSelectedFile] = useState<ResearchFile | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("answer");
   const [query, setQuery] = useState("");
-  const [localSteps, setLocalSteps] = useState<Step[]>([]);
 
-  const { agent } = useAgent({ agentId: "research_assistant" });
+  // useAgent with OnStateChanged for real-time progress updates
+  const { agent } = useAgent({
+    agentId: "research_assistant",
+    updates: [UseAgentUpdate.OnStateChanged],
+  });
+
+  const agentState = agent.state as AgentState | undefined;
+  const steps = agentState?.steps || [];
+  const activeStepIndex = agentState?.active_step_index ?? -1;
+
   const { copilotkit } = useCopilotKit();
   const renderToolCall = useRenderToolCall();
   const { registerResetCallback } = useThread();
 
-  // Register reset callback to clear local state when new thread starts
+  // Register reset callback
   useEffect(() => {
     const unregister = registerResetCallback(() => {
       setResearchState(INITIAL_STATE);
       setSelectedFile(null);
       setActiveTab("answer");
       setQuery("");
-      setLocalSteps([]);
       agent.setMessages([]);
     });
     return unregister;
   }, [registerResetCallback, agent]);
 
-  // Ref for file click handler — used inside stable useDefaultRenderTool callback
+  // Ref for file click handler
   const fileClickRef = useRef<(path: string) => void>(() => {});
 
-  // Track research state from tool calls using v2 useDefaultRenderTool
+  // Track research state from tool calls
   useDefaultRenderTool(
     {
       render: ({ name, status, parameters, result }) => {
         const args = (parameters ?? {}) as Record<string, unknown>;
         const isActive = status === "inProgress" || status === "executing";
 
-        // Update step tracker from update_step tool lifecycle (synchronous for real-time updates)
-        if (name === "update_step") {
-          const stepIndex = args?.step_index as number | undefined;
-          if (stepIndex !== undefined) {
-            // Defer state update to avoid "setState during render" warning
-            queueMicrotask(() => {
-              setLocalSteps((prev) =>
-                prev.map((s, i) =>
-                  i === stepIndex
-                    ? { ...s, status: isActive ? "running" : ("done" as const) }
-                    : s,
-                ),
-              );
-            });
-          }
-          return <></>;
-        }
-
-        // Handle write_todos immediately when it starts (inProgress) for real-time updates
-        // This ensures todos and steps appear right away, not waiting for completion
+        // Handle write_todos for research state (not step tracking)
         if (name === "write_todos" && args?.todos) {
           const todosWithIds = (
             args.todos as Array<{
@@ -132,31 +189,17 @@ function ResearchPage() {
             id: todo.id || `todo-${Date.now()}-${index}`,
           }));
 
-          // Defer state updates to avoid "setState during render" warning
           queueMicrotask(() => {
-            // Only update if we haven't already set these todos (prevent duplicate updates)
             setResearchState((prev) => {
               const hasTheseTodos = prev.todos.length === todosWithIds.length &&
                 todosWithIds.every((t, i) => prev.todos[i]?.content === t.content);
               if (hasTheseTodos) return prev;
-              return {
-                ...prev,
-                todos: todosWithIds as Todo[],
-              };
-            });
-
-            setLocalSteps((prev) => {
-              if (prev.length > 0) return prev; // Already populated
-              return todosWithIds.map((todo, index) => ({
-                id: index,
-                content: todo.content,
-                status: "pending" as const,
-              }));
+              return { ...prev, todos: todosWithIds as Todo[] };
             });
           });
         }
 
-        // Update research state when tools complete (deferred to avoid setState during render)
+        // Update research state when tools complete
         if (status === "complete") {
           if (name === "research" && result) {
             const unwrapped = normalizeResult(result);
@@ -217,10 +260,6 @@ function ResearchPage() {
   const totalCount = researchState.todos.length;
   const isResearchComplete = completedCount === totalCount && totalCount > 0;
 
-  // Step progress from local state (populated by write_todos + update_step events)
-  const trackerSteps = localSteps;
-  const trackerActiveIndex = localSteps.findIndex((s) => s.status === "running");
-
   const lastUserMessage = (() => {
     const lastUser = [...agent.messages].reverse().find((m) => m.role === "user");
     if (!lastUser) return "";
@@ -231,7 +270,6 @@ function ResearchPage() {
   const handleSend = useCallback(
     async (message: string) => {
       setQuery(message);
-      setLocalSteps([]);
       agent.addMessage({
         id: crypto.randomUUID(),
         role: "user",
@@ -244,14 +282,12 @@ function ResearchPage() {
 
   const handleFileClick = useCallback(
     (filePath: string) => {
-      // Look up by exact path or by matching the filename portion
       const file = researchState.files.find(
         (f) => f.path === filePath || f.path.endsWith(filePath) || filePath.endsWith(f.path)
       );
       if (file) {
         setSelectedFile(file);
       } else {
-        // File not found in tracked state — show a transient toast
         const toast = document.createElement("div");
         toast.className =
           "fixed bottom-20 left-1/2 -translate-x-1/2 z-[60] bg-red-600/90 text-white text-sm px-4 py-2 rounded-lg shadow-lg backdrop-blur-sm border border-red-500/30 transition-opacity duration-300";
@@ -266,14 +302,12 @@ function ResearchPage() {
     [researchState.files],
   );
 
-  // Keep ref in sync for the stable useDefaultRenderTool callback
   useEffect(() => {
     fileClickRef.current = handleFileClick;
   }, [handleFileClick]);
 
   const hasActivity = agent.messages.length > 0;
 
-  // Extract text from v2 message content (can be string or content blocks)
   function extractText(content: unknown): string {
     if (typeof content === "string") return content;
     if (Array.isArray(content)) {
@@ -285,11 +319,9 @@ function ResearchPage() {
     return "";
   }
 
-  // Render a single message
   const renderMessage = (msg: (typeof agent.messages)[number], index: number) => {
     const text = extractText(msg.content);
 
-    // User message
     if (msg.role === "user") {
       return (
         <div key={msg.id ?? index} className="flex justify-end mb-6">
@@ -300,7 +332,6 @@ function ResearchPage() {
       );
     }
 
-    // Assistant message — render both text AND tool calls
     if (msg.role === "assistant") {
       const toolCalls = (msg as { toolCalls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> }).toolCalls;
       const hasText = !!text;
@@ -350,11 +381,10 @@ function ResearchPage() {
             <>
               <SourceBanner query={query || lastUserMessage} />
 
-              <StepTracker
-                steps={trackerSteps}
-                activeIndex={trackerActiveIndex}
-                isAgentRunning={agent.isRunning}
-              />
+              {/* TaskProgress via useAgent state */}
+              {steps.length > 0 && (
+                <TaskProgress steps={steps} activeIndex={activeStepIndex} />
+              )}
 
               {isResearchComplete && (
                 <p className="text-xs text-green-400 mb-4 flex items-center gap-1">
@@ -397,4 +427,30 @@ function ResearchPage() {
       />
     </div>
   );
+}
+
+// Keep Page component with useSyncExternalStore
+export default function Page() {
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+
+  if (!mounted) {
+    return (
+      <div className="h-full flex items-center justify-center bg-[#1a1a1a]">
+        <div className="flex flex-col items-center">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600/10 flex items-center justify-center mb-4">
+            <Search size={24} className="text-blue-400" />
+          </div>
+          <h1 className="text-2xl font-semibold text-white mb-2">
+            What do you want to research?
+          </h1>
+          <p className="text-gray-500 text-sm text-center max-w-md">
+            Ask any question and I&apos;ll do deep research using web search
+            to find the most relevant and up-to-date information.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return <ResearchPage />;
 }
