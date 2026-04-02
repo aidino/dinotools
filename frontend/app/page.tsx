@@ -16,6 +16,7 @@ import { StepTracker, type Step } from "@/components/Thread/StepTracker";
 import { AnswerBody } from "@/components/Thread/AnswerBody";
 import { FollowUpInput } from "@/components/Thread/FollowUpInput";
 import { LinksTab } from "@/components/Thread/LinksTab";
+import { useThread } from "@/components/ThreadContext";
 import { Search } from "lucide-react";
 
 function normalizeResult(result: unknown): unknown {
@@ -74,6 +75,20 @@ function ResearchPage() {
   const { agent } = useAgent({ agentId: "research_assistant" });
   const { copilotkit } = useCopilotKit();
   const renderToolCall = useRenderToolCall();
+  const { threadVersion } = useThread();
+
+  // Reset all local state when a new thread is started
+  useEffect(() => {
+    if (threadVersion === 0) return; // skip initial mount
+    setResearchState(INITIAL_STATE);
+    setSelectedFile(null);
+    setActiveTab("answer");
+    setQuery("");
+    setLocalSteps([]);
+    
+    // Explicitly reset agent messages to clear the chat view immediately
+    agent.setMessages([]);
+  }, [threadVersion, agent]);
 
   // Ref for file click handler — used inside stable useDefaultRenderTool callback
   const fileClickRef = useRef<(path: string) => void>(() => {});
@@ -350,15 +365,6 @@ function ResearchPage() {
 
               {activeTab === "links" && (
                 <LinksTab sources={researchState.sources} />
-              )}
-
-              {activeTab === "images" && (
-                <div className="text-center py-12">
-                  <p className="text-gray-500 text-sm">No images found.</p>
-                  <p className="text-gray-600 text-xs mt-1">
-                    Image results will appear here when available.
-                  </p>
-                </div>
               )}
             </>
           )}

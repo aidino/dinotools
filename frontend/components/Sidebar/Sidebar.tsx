@@ -3,23 +3,16 @@
 import { useState } from "react";
 import {
   Search,
-  Monitor,
   Plus,
-  Clock,
-  Compass,
-  Layers,
-  DollarSign,
-  Heart,
-  GraduationCap,
-  FileText,
-  MoreHorizontal,
   Bell,
 } from "lucide-react";
 import { NavItem } from "./NavItem";
 import { HistoryList } from "./HistoryList";
+import { useThread } from "../ThreadContext";
 
 export function Sidebar() {
   const [activeNav, setActiveNav] = useState("search");
+  const { startNewThread } = useThread();
 
   return (
     <aside className="flex flex-col gap-1 h-full w-[148px] px-2 py-3 bg-[#1a1a1a] border-r border-white/10 shrink-0">
@@ -33,7 +26,7 @@ export function Sidebar() {
 
       {/* Navigation group */}
       <div className="mt-4 flex flex-col gap-1">
-        <NavItem icon={Plus} label="New thread" bright />
+        <NavItem icon={Plus} label="New thread" bright onClick={startNewThread} />
         
       </div>
 
