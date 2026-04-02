@@ -17,6 +17,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from tavily import TavilyClient
+from copilotkit.langgraph import copilotkit_emit_state
 
 load_dotenv()
 
@@ -93,33 +94,35 @@ def internet_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
 
 @tool
 async def update_step(step_index: int, status: str, config: RunnableConfig) -> str:
-    """Update the status of the current research step. Call before starting and after completing each research step.
+    """Update the status of the current research step and emit to frontend.
 
     Args:
         step_index: The zero-based index of the step in the research plan.
         status: The new status - "running" or "done".
     """
-    # Frontend tracks step status via useDefaultRenderTool lifecycle events.
-    # This tool exists so the agent has an explicit mechanism to signal progress.
-    # We also attempt to emit state via CopilotKit for any AG-UI consumers.
     try:
-        from copilotkit.langgraph import copilotkit_emit_state
-
         thread_id = _get_thread_id(config)
         progress = _step_progress.get(thread_id, {"steps": [], "active_step_index": -1})
         steps = progress["steps"]
 
         if 0 <= step_index < len(steps):
-            steps[step_index]["status"] = status
-            progress["active_step_index"] = step_index if status == "running" else -1
+            # Map internal status to UI status
+            ui_status = "completed" if status == "done" else "pending"
+            steps[step_index]["status"] = ui_status
+
+            # Set active index (-1 if not running)
+            active_index = step_index if status == "running" else -1
+            progress["active_step_index"] = active_index
             _step_progress[thread_id] = progress
 
+            # Emit state to frontend via CopilotKit
             await copilotkit_emit_state(config, {
                 "steps": steps,
-                "active_step_index": progress["active_step_index"],
+                "active_step_index": active_index,
             })
-    except Exception:
-        pass  # Non-critical — frontend tracks status via tool lifecycle
+    except Exception as e:
+        # Log but don't fail - frontend also tracks via tool lifecycle
+        print(f"[update_step] Warning: failed to emit state: {e}")
 
     return f"Step {step_index} marked as {status}"
 
