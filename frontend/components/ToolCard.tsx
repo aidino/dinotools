@@ -18,6 +18,7 @@ interface ToolCardProps {
   args: Record<string, unknown>;
   result?: unknown;
   onFileClick?: (filePath: string) => void;
+  todos?: Array<{ id: string; content: string; status: string }>;
 }
 
 function normalizeResult(result: unknown): unknown {
@@ -129,7 +130,7 @@ const TOOL_CONFIG: Record<
   },
 };
 
-export function ToolCard({ name, status, args, result, onFileClick }: ToolCardProps) {
+export function ToolCard({ name, status, args, result, onFileClick, todos }: ToolCardProps) {
   const config = TOOL_CONFIG[name];
 
   if (config) {
@@ -141,6 +142,7 @@ export function ToolCard({ name, status, args, result, onFileClick }: ToolCardPr
         result={result}
         config={config}
         onFileClick={onFileClick}
+        todos={todos}
       />
     );
   }
@@ -164,6 +166,7 @@ interface SpecializedToolCardProps extends ToolCardProps {
     ) => string | null;
   };
   onFileClick?: (filePath: string) => void;
+  todos?: Array<{ id: string; content: string; status: string }>;
 }
 
 function SpecializedToolCard({
@@ -173,6 +176,7 @@ function SpecializedToolCard({
   result,
   config,
   onFileClick,
+  todos,
 }: SpecializedToolCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isComplete = status === "complete";
@@ -186,7 +190,8 @@ function SpecializedToolCard({
       : null;
 
   const hasExpandableContent =
-    isComplete && (name === "research" || name === "write_todos");
+    (name === "research" && isComplete) ||
+    (name === "write_todos" && (isComplete || isExecuting));
 
   // For write_file, show "View Report" button when complete
   const isFileWriteComplete = isComplete && name === "write_file";
@@ -258,7 +263,7 @@ function SpecializedToolCard({
 
       {expanded && isComplete && (
         <div className="mt-3 pt-3 border-t border-white/10">
-          <ExpandedDetails name={name} result={normalizedResult} args={args} />
+          <ExpandedDetails name={name} result={normalizedResult} args={args} todos={todos} />
         </div>
       )}
     </div>
@@ -269,10 +274,12 @@ function ExpandedDetails({
   name,
   result,
   args,
+  todos,
 }: {
   name: string;
   result: unknown;
   args: Record<string, unknown>;
+  todos?: Array<{ id: string; content: string; status: string }>;
 }) {
   if (name === "research") {
     const summary =
@@ -294,14 +301,13 @@ function ExpandedDetails({
   }
 
   if (name === "write_todos") {
-    const todos = (
-      args as { todos?: Array<{ id: string; content: string; status: string }> }
-    )?.todos;
-    if (!todos?.length)
+    // Use todos from props (from researchState), fall back to args.todos for real-time updates
+    const todoList = todos?.length ? todos : (args?.todos as typeof todos);
+    if (!todoList?.length)
       return <p className="text-xs text-gray-500">No todos</p>;
     return (
       <div className="space-y-1 max-h-40 overflow-y-auto">
-        {todos.map((todo, i) => (
+        {todoList.map((todo, i) => (
           <div key={todo.id || i} className="flex items-start gap-2 text-xs">
             <span
               className="mt-0.5"

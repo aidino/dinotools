@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useSyncExternalStore, useState, useEffect, useCallback, useRef } from "react";
 import { useAgent, useCopilotKit, useDefaultRenderTool, useRenderToolCall } from "@copilotkit/react-core/v2";
 import {
   ResearchState,
@@ -18,6 +18,10 @@ import { FollowUpInput } from "@/components/Thread/FollowUpInput";
 import { LinksTab } from "@/components/Thread/LinksTab";
 import { useThread } from "@/components/ThreadContext";
 import { Search } from "lucide-react";
+
+const subscribe = () => () => {}; // no-op subscription
+const getSnapshot = () => true; // always true on client
+const getServerSnapshot = () => false; // always false on server
 
 function normalizeResult(result: unknown): unknown {
   if (
@@ -37,11 +41,7 @@ function normalizeResult(result: unknown): unknown {
 }
 
 export default function Page() {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   if (!mounted) {
     return (
@@ -75,20 +75,20 @@ function ResearchPage() {
   const { agent } = useAgent({ agentId: "research_assistant" });
   const { copilotkit } = useCopilotKit();
   const renderToolCall = useRenderToolCall();
-  const { threadVersion } = useThread();
+  const { registerResetCallback } = useThread();
 
-  // Reset all local state when a new thread is started
+  // Register reset callback to clear local state when new thread starts
   useEffect(() => {
-    if (threadVersion === 0) return; // skip initial mount
-    setResearchState(INITIAL_STATE);
-    setSelectedFile(null);
-    setActiveTab("answer");
-    setQuery("");
-    setLocalSteps([]);
-    
-    // Explicitly reset agent messages to clear the chat view immediately
-    agent.setMessages([]);
-  }, [threadVersion, agent]);
+    const unregister = registerResetCallback(() => {
+      setResearchState(INITIAL_STATE);
+      setSelectedFile(null);
+      setActiveTab("answer");
+      setQuery("");
+      setLocalSteps([]);
+      agent.setMessages([]);
+    });
+    return unregister;
+  }, [registerResetCallback, agent]);
 
   // Ref for file click handler — used inside stable useDefaultRenderTool callback
   const fileClickRef = useRef<(path: string) => void>(() => {});
@@ -100,24 +100,57 @@ function ResearchPage() {
         const args = (parameters ?? {}) as Record<string, unknown>;
         const isActive = status === "inProgress" || status === "executing";
 
-        // Update step tracker from update_step tool lifecycle
+        // Update step tracker from update_step tool lifecycle (synchronous for real-time updates)
         if (name === "update_step") {
           const stepIndex = args?.step_index as number | undefined;
           if (stepIndex !== undefined) {
-            queueMicrotask(() =>
-              setLocalSteps((prev) =>
-                prev.map((s, i) =>
-                  i === stepIndex
-                    ? { ...s, status: isActive ? "running" : ("done" as const) }
-                    : s,
-                ),
+            setLocalSteps((prev) =>
+              prev.map((s, i) =>
+                i === stepIndex
+                  ? { ...s, status: isActive ? "running" : ("done" as const) }
+                  : s,
               ),
             );
           }
           return <></>;
         }
 
-        // Update research state when tools complete
+        // Handle write_todos immediately when it starts (inProgress) for real-time updates
+        // This ensures todos and steps appear right away, not waiting for completion
+        if (name === "write_todos" && args?.todos) {
+          const todosWithIds = (
+            args.todos as Array<{
+              id?: string;
+              content: string;
+              status: string;
+            }>
+          ).map((todo, index) => ({
+            ...todo,
+            id: todo.id || `todo-${Date.now()}-${index}`,
+          }));
+
+          // Only update if we haven't already set these todos (prevent duplicate updates)
+          setResearchState((prev) => {
+            const hasTheseTodos = prev.todos.length === todosWithIds.length &&
+              todosWithIds.every((t, i) => prev.todos[i]?.content === t.content);
+            if (hasTheseTodos) return prev;
+            return {
+              ...prev,
+              todos: todosWithIds as Todo[],
+            };
+          });
+
+          setLocalSteps((prev) => {
+            if (prev.length > 0) return prev; // Already populated
+            return todosWithIds.map((todo, index) => ({
+              id: index,
+              content: todo.content,
+              status: "pending" as const,
+            }));
+          });
+        }
+
+        // Update research state when tools complete (synchronous for real-time updates)
         if (status === "complete") {
           if (name === "research" && result) {
             const unwrapped = normalizeResult(result);
@@ -131,55 +164,25 @@ function ResearchPage() {
               }>;
             };
             if (researchResult.sources && researchResult.sources.length > 0) {
-              queueMicrotask(() =>
-                setResearchState((prev) => ({
-                  ...prev,
-                  sources: [...prev.sources, ...researchResult.sources],
-                })),
-              );
+              setResearchState((prev) => ({
+                ...prev,
+                sources: [...prev.sources, ...researchResult.sources],
+              }));
             }
           }
 
-          if (name === "write_todos" && args?.todos) {
-            const todosWithIds = (
-              args.todos as Array<{
-                id?: string;
-                content: string;
-                status: string;
-              }>
-            ).map((todo, index) => ({
-              ...todo,
-              id: todo.id || `todo-${Date.now()}-${index}`,
-            }));
-            queueMicrotask(() => {
-              setResearchState((prev) => ({
-                ...prev,
-                todos: todosWithIds as Todo[],
-              }));
-              setLocalSteps(
-                todosWithIds.map((todo, index) => ({
-                  id: index,
-                  content: todo.content,
-                  status: "pending" as const,
-                })),
-              );
-            });
-          }
-
           if (name === "write_file" && args?.file_path) {
-            queueMicrotask(() => {
-              setResearchState((prev) => ({
-                ...prev,
-                files: [
-                  ...prev.files,
-                  {
-                    path: args.file_path as string,
-                    content: args.content as string,
-                    createdAt: new Date().toISOString(),
-                  },
-                ],
-              }));
-            });
+            setResearchState((prev) => ({
+              ...prev,
+              files: [
+                ...prev.files,
+                {
+                  path: args.file_path as string,
+                  content: args.content as string,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            }));
           }
         }
 
@@ -190,6 +193,7 @@ function ResearchPage() {
             args={args}
             result={status === "complete" ? result : undefined}
             onFileClick={(path) => fileClickRef.current(path)}
+            todos={researchState.todos}
           />
         );
       },
