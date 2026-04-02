@@ -1,9 +1,9 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { FileText, Link2, Image } from "lucide-react";
+import { FileText, Link2 } from "lucide-react";
 
-export type TabId = "answer" | "links" | "images";
+export type TabId = "answer" | "links";
 
 interface TabConfig {
   id: TabId;
@@ -14,7 +14,6 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   { id: "answer", label: "Answer", icon: FileText },
   { id: "links", label: "Links", icon: Link2 },
-  { id: "images", label: "Images", icon: Image },
 ];
 
 interface TabBarProps {
