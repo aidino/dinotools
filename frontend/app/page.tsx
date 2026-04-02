@@ -53,7 +53,6 @@ function TaskProgress({ steps, activeIndex }: { steps: Step[]; activeIndex: numb
           {steps.map((step, index) => {
             const isCompleted = step.status === "completed";
             const isRunning = index === activeIndex;
-            const isPending = !isCompleted && !isRunning;
 
             return (
               <div

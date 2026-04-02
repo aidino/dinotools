@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Plus, Zap, Github, Mic, ArrowUp } from "lucide-react";
+import { Plus, ArrowUp } from "lucide-react";
 
 interface FollowUpInputProps {
   onSend: (message: string) => void;
